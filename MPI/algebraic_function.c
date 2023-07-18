@@ -1,11 +1,9 @@
 /*
-@(#)File:           $sequential-algebraic-function-handson3.c$
-@(#)Last changed:   $Date: 20220407 11:35:00 $
 @(#)Purpose:        Algebraic value applied in a function in C
-@(#)Author:         muriloboratto 'at' fieb.org.br
+@(#)Author:         Adine Alves
 @(#)Usage:
-@(*) Hotocompile:   gcc sequential-algebraic-function-handson3.c -o obj
-@(*) Hotoexecute:   ./obj
+@(*) Hotocompile:   mpicc algebraic_function.c -o algebraic_function
+@(*) Hotoexecute:   mpirun -np 4 ./algebraic_function
 */
 
 #include <stdio.h>
