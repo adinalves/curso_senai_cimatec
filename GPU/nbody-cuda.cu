@@ -3,115 +3,110 @@
 #include <stdlib.h>
 #include <omp.h>
 
-
 #define BLOCK_SIZE 256
 #define SOFTENING 1e-9f
 
-typedef struct { float x, y, z, vx, vy, vz; } Body;
+typedef struct
+{
+  float x, y, z, vx, vy, vz;
+} Body;
 
-void randomizeBodies(float *data, int n) 
+void randomizeBodies(float *data, int n)
 {
   for (int i = 0; i < n; i++)
     data[i] = 2.0f * (rand() / (float)RAND_MAX) - 1.0f;
-
 }
 
-__global__ void bodyForceKernel(Body *p, float dt, int n) 
+__global__ void bodyForceKernel(Body *p, float dt, int n)
 {
-    int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i < n) {
-        float Fx = 0.0f;
-        float Fy = 0.0f;
-        float Fz = 0.0f;
+  int i = blockIdx.x * blockDim.x + threadIdx.x;
+  if (i < n)
+  {
+    float Fx = 0.0f;
+    float Fy = 0.0f;
+    float Fz = 0.0f;
 
-        for (int j = 0; j < n; j++) {
-            float dx = p[j].x - p[i].x;
-            float dy = p[j].y - p[i].y;
-            float dz = p[j].z - p[i].z;
-            float distSqr = dx*dx + dy*dy + dz*dz + SOFTENING;
-            float invDist = rsqrtf(distSqr);
-            float invDist3 = invDist * invDist * invDist;
+    for (int j = 0; j < n; j++)
+    {
+      float dx = p[j].x - p[i].x;
+      float dy = p[j].y - p[i].y;
+      float dz = p[j].z - p[i].z;
+      float distSqr = dx * dx + dy * dy + dz * dz + SOFTENING;
+      float invDist = rsqrtf(distSqr);
+      float invDist3 = invDist * invDist * invDist;
 
-            Fx += dx * invDist3; 
-            Fy += dy * invDist3; 
-            Fz += dz * invDist3;
-        }
-
-        p[i].vx += dt * Fx; 
-        p[i].vy += dt * Fy; 
-        p[i].vz += dt * Fz;
+      Fx += dx * invDist3;
+      Fy += dy * invDist3;
+      Fz += dz * invDist3;
     }
+
+    p[i].vx += dt * Fx;
+    p[i].vy += dt * Fy;
+    p[i].vz += dt * Fz;
+  }
 }
 
-void bodyForce(Body *p, float dt, int n) 
+void bodyForce(Body *p, float dt, int n)
 {
-    // Allocate GPU memory for particle data
-    Body *d_p;
-    cudaMalloc((void**)&d_p, sizeof(Body) * n);
-    
-    // Copy particle data from host to GPU
-    cudaMemcpy(d_p, p, sizeof(Body) * n, cudaMemcpyHostToDevice);
+  // Allocate GPU memory for particle data
+  Body *d_p;
+  cudaMalloc((void **)&d_p, sizeof(Body) * n);
 
-    // Define thread block size and grid size
-    int blockSize = 256;
-    int numBlocks = (n + blockSize - 1) / blockSize;
+  // Copy particle data from host to GPU
+  cudaMemcpy(d_p, p, sizeof(Body) * n, cudaMemcpyHostToDevice);
 
-    // Launch the CUDA kernel
-    bodyForceKernel<<<numBlocks, blockSize>>>(d_p, dt, n);
+  // Define thread block size and grid size
+  int blockSize = 256;
+  int numBlocks = (n + blockSize - 1) / blockSize;
 
-    // Copy updated particle data back from GPU to host
-    cudaMemcpy(p, d_p, sizeof(Body) * n, cudaMemcpyDeviceToHost);
+  // Launch the CUDA kernel
+  bodyForceKernel<<<numBlocks, blockSize>>>(d_p, dt, n);
 
-    // Free GPU memory
-    cudaFree(d_p);
+  // Copy updated particle data back from GPU to host
+  cudaMemcpy(p, d_p, sizeof(Body) * n, cudaMemcpyDeviceToHost);
+
+  // Free GPU memory
+  cudaFree(d_p);
 }
 
-int main(const int argc, const char** argv) 
+int main(const int argc, const char **argv)
 {
-  int nBodies = 30000; //size of the problem (bodies)
-    
-  if (argc > 1) 
+  int nBodies = 30000; // size of the problem (bodies)
+
+  if (argc > 1)
     nBodies = atoi(argv[1]);
 
-  const float dt   = 0.01f; // time step
-  const int nIters = 10;    // simulation iterations
-  int bytes  = nBodies * sizeof(Body);
-  float *buf = (float*) malloc (bytes);
-  Body *p    = (Body*) buf;
+  const float dt = 0.01f; // time step
+  const int nIters = 10;  // simulation iterations
+  int bytes = nBodies * sizeof(Body);
+  float *buf = (float *)malloc(bytes);
+  Body *p = (Body *)buf;
 
-  randomizeBodies(buf, 6*nBodies); // Init pos/vel data
+  randomizeBodies(buf, 6 * nBodies); // Init pos/vel data
 
   const double t1 = omp_get_wtime();
 
-  for (int iter = 1; iter <= nIters; iter++) 
+  for (int iter = 1; iter <= nIters; iter++)
   {
     bodyForce(p, dt, nBodies); // compute interbody forces
-  
-    for (int i = 0 ; i < nBodies; i++) { // integrate position
-      p[i].x += p[i].vx*dt;
-      p[i].y += p[i].vy*dt;
-      p[i].z += p[i].vz*dt;
-    }
 
+    for (int i = 0; i < nBodies; i++)
+    { // integrate position
+      p[i].x += p[i].vx * dt;
+      p[i].y += p[i].vy * dt;
+      p[i].z += p[i].vz * dt;
+    }
   }
 
-// Imprimindo os valores
-    printf("x: %f\n", p->x);
-    printf("y: %f\n", p->y);
-    printf("z: %f\n", p->z);
-    printf("vx: %f\n", p->vx);
-    printf("vy: %f\n", p->vy);
-    printf("vz: %f\n", p->vz);
-    
   const double t2 = omp_get_wtime();
 
-  double avgTime = (t2-t1) / (double)(nIters-1); 
-  
+  double avgTime = (t2 - t1) / (double)(nIters - 1);
+
   float billionsOfOpsPerSecond = 1e-9 * nBodies * nBodies / avgTime;
-  printf("\nSize (Bodies) = %d\n", nBodies);
-  printf("%0.3f Billion Interactions/second\n", billionsOfOpsPerSecond);
+  // printf("\nSize (Bodies) = %d\n", nBodies);
+  // printf("%0.3f Billion Interactions/second\n", billionsOfOpsPerSecond);
   printf("%0.3f second\n", avgTime);
-  
+
   free(buf);
 
   return 0;
